@@ -1,0 +1,20 @@
+div {
+    background: black;
+    color: white;
+}
+
+a {
+    color: blue;
+}
+
+h1 {
+    color: red;
+    font-family: sans-serif;
+}
+
+.center {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+}
