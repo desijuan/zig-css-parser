@@ -16,8 +16,8 @@ pub const Sheet = struct {
         }
     }
 
-    pub fn free(self: Sheet, allocator: std.mem.Allocator) void {
-        for (self.rules) |rule| allocator.free(rule.decls);
+    pub fn deinit(self: Sheet, allocator: std.mem.Allocator) void {
+        for (self.rules) |rule| rule.deinit(allocator);
         allocator.free(self.rules);
     }
 };
@@ -32,6 +32,10 @@ const Rule = struct {
             std.debug.print("  ", .{});
             decl.print();
         }
+    }
+
+    pub fn deinit(self: Rule, allocator: std.mem.Allocator) void {
+        allocator.free(self.decls);
     }
 };
 
@@ -48,11 +52,21 @@ const Property = enum {
     width,
     height,
     margin,
+    @"margin-left",
+    @"margin-right",
+    @"margin-top",
+    @"margin-bottom",
+    @"max-width",
+    @"border-left",
+    @"border-right",
     padding,
     border,
     color,
     background,
     @"background-color",
+    @"background-image",
+    @"border-color",
+    @"font-style",
     @"font-family",
     @"font-size",
     @"font-weight",
@@ -60,13 +74,17 @@ const Property = enum {
     display,
     @"justify-content",
     @"align-items",
+    @"box-shadow",
 };
 
 pub fn parse_sheet(
     allocator: std.mem.Allocator,
 ) !Sheet {
     var rules = try std.ArrayList(Rule).initCapacity(allocator, 256);
-    errdefer rules.deinit();
+    errdefer {
+        for (rules.items) |rule| rule.deinit(allocator);
+        rules.deinit();
+    }
 
     try eat_whitespace();
     while (index < if_buffer.len) : (try eat_whitespace()) {
@@ -150,7 +168,7 @@ fn match_decl(key: []const u8, value: []const u8) ?Declaration {
 fn parse_string_up_to(char: u8) ![]const u8 {
     if (index >= if_buffer.len) {
         debug_at(index);
-        return error.OutOfBounds;
+        return error.IndexOutOfBounds;
     }
 
     const initial_index: u64 = index;
@@ -170,7 +188,7 @@ fn parse_string_up_to(char: u8) ![]const u8 {
 fn read_char(char: u8) !void {
     if (index >= if_buffer.len) {
         debug_at(index);
-        return error.OutOfBounds;
+        return error.IndexOutOfBounds;
     }
 
     if (if_buffer[index] != char) {

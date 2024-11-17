@@ -9,7 +9,9 @@ const Args = struct {
 };
 
 pub fn main() !u8 {
-    const args: Args = try utils.readArgs(Args);
+    const args: Args = utils.readArgs(Args) catch
+        return 1;
+
     const input_fp: [:0]const u8 = args.input_fp;
 
     var gpa = std.heap.GeneralPurposeAllocator(.{ .safety = true }){};
@@ -39,8 +41,7 @@ pub fn main() !u8 {
 
         return 1;
     };
-
-    defer cssSheet.free(allocator);
+    defer cssSheet.deinit(allocator);
 
     cssSheet.print();
 
