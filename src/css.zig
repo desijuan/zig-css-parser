@@ -23,11 +23,16 @@ pub const Sheet = struct {
 };
 
 const Rule = struct {
-    selector: []const u8,
+    selectors: []const []const u8,
     decls: []const Declaration,
 
     fn print(self: Rule) void {
-        std.debug.print("selector: \"{s}\"\n", .{self.selector});
+        std.debug.print("selectors: \"{s}\"", .{self.selectors[0]});
+        for (self.selectors[1..]) |selector|
+            std.debug.print(", \"{s}\"", .{selector})
+        else
+            std.debug.print("\n", .{});
+
         for (self.decls) |decl| {
             std.debug.print("  ", .{});
             decl.print();
@@ -35,6 +40,7 @@ const Rule = struct {
     }
 
     pub fn deinit(self: Rule, allocator: std.mem.Allocator) void {
+        allocator.free(self.selectors);
         allocator.free(self.decls);
     }
 };
@@ -105,14 +111,24 @@ pub fn parse_sheet(
 fn parse_rule(
     allocator: std.mem.Allocator,
 ) !Rule {
-    var decls = try std.ArrayList(Declaration).initCapacity(allocator, 256);
-    errdefer decls.deinit();
+    var selectors = try std.ArrayList([]const u8).initCapacity(allocator, 16);
+    errdefer selectors.deinit();
 
-    // parse selector
-    const selector = try parse_string_up_to('{');
+    // parse selector part
+    const selector_str = try parse_string_up_to('{');
+
+    var it = std.mem.tokenizeScalar(u8, selector_str, ',');
+    while (it.next()) |item| {
+        try selectors.append(std.mem.trim(u8, item, &std.ascii.whitespace));
+    }
+
+    if (selectors.items.len == 0) return error.NoSelector;
 
     // parse opening curly brace '{'
     try read_char('{');
+
+    var decls = try std.ArrayList(Declaration).initCapacity(allocator, 256);
+    errdefer decls.deinit();
 
     // parse properties
     try eat_whitespace();
@@ -125,7 +141,7 @@ fn parse_rule(
     try read_char('}');
 
     return Rule{
-        .selector = selector,
+        .selectors = try selectors.toOwnedSlice(),
         .decls = try decls.toOwnedSlice(),
     };
 }
