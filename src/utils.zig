@@ -15,20 +15,20 @@ pub fn printStruct(value: anytype) !void {
     std.debug.print("}}\n", .{});
 }
 
-pub fn readArgs(comptime T: type) !T {
-    const typeInfo = @typeInfo(T);
+pub fn readArgs(comptime ArgsStruct: type) !ArgsStruct {
+    const typeInfo = @typeInfo(ArgsStruct);
     if (typeInfo != .Struct) @compileError("Struct expected!");
 
     var args = std.process.args();
     const bin: []const u8 = args.next().?;
 
-    return read_args: {
-        var value: T = undefined;
+    var argsStruct: ArgsStruct = undefined;
 
+    (read_args: {
         inline for (typeInfo.Struct.fields) |field| {
             const arg_str = args.next() orelse break :read_args error.InvalidArguments;
 
-            @field(value, field.name) = switch (@typeInfo(field.type)) {
+            @field(argsStruct, field.name) = switch (@typeInfo(field.type)) {
                 .Pointer => arg_str,
                 .Int => try std.fmt.parseInt(field.type, arg_str, 10),
                 .Float => try std.fmt.parseFloat(field.type, arg_str),
@@ -37,15 +37,15 @@ pub fn readArgs(comptime T: type) !T {
         }
 
         if (args.skip()) break :read_args error.InvalidArguments;
-
-        break :read_args value;
     } catch |err| {
         std.debug.print("Usage: {s}", .{bin});
-        inline for (typeInfo.Struct.fields) |field| {
-            std.debug.print(" <{s}>", .{field.name});
-        }
-        std.debug.print("\n", .{});
+        inline for (typeInfo.Struct.fields) |field|
+            std.debug.print(" <{s}>", .{field.name})
+        else
+            std.debug.print("\n", .{});
 
         return err;
-    };
+    });
+
+    return argsStruct;
 }

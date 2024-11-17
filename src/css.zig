@@ -2,6 +2,7 @@ const std = @import("std");
 
 var index: u64 = 0;
 
+pub var allocator: std.mem.Allocator = undefined;
 pub var if_buffer: []u8 = undefined;
 
 pub const Sheet = struct {
@@ -16,8 +17,8 @@ pub const Sheet = struct {
         }
     }
 
-    pub fn deinit(self: Sheet, allocator: std.mem.Allocator) void {
-        for (self.rules) |rule| rule.deinit(allocator);
+    pub fn deinit(self: Sheet) void {
+        for (self.rules) |rule| rule.deinit();
         allocator.free(self.rules);
     }
 };
@@ -27,7 +28,8 @@ const Rule = struct {
     decls: []const Declaration,
 
     fn print(self: Rule) void {
-        std.debug.print("selectors: \"{s}\"", .{self.selectors[0]});
+        const first_or_empty = if (self.selectors.len == 0) "<empty>" else self.selectors[0];
+        std.debug.print("selectors: \"{s}\"", .{first_or_empty});
         for (self.selectors[1..]) |selector|
             std.debug.print(", \"{s}\"", .{selector})
         else
@@ -39,7 +41,7 @@ const Rule = struct {
         }
     }
 
-    pub fn deinit(self: Rule, allocator: std.mem.Allocator) void {
+    pub fn deinit(self: Rule) void {
         allocator.free(self.selectors);
         allocator.free(self.decls);
     }
@@ -83,18 +85,16 @@ const Property = enum {
     @"box-shadow",
 };
 
-pub fn parse_sheet(
-    allocator: std.mem.Allocator,
-) !Sheet {
+pub fn parse_sheet() !Sheet {
     var rules = try std.ArrayList(Rule).initCapacity(allocator, 256);
     errdefer {
-        for (rules.items) |rule| rule.deinit(allocator);
+        for (rules.items) |rule| rule.deinit();
         rules.deinit();
     }
 
     try eat_whitespace();
     while (index < if_buffer.len) : (try eat_whitespace()) {
-        const rule = try parse_rule(allocator);
+        const rule = try parse_rule();
         try rules.append(rule);
     }
 
@@ -108,9 +108,7 @@ pub fn parse_sheet(
     };
 }
 
-fn parse_rule(
-    allocator: std.mem.Allocator,
-) !Rule {
+fn parse_rule() !Rule {
     var selectors = try std.ArrayList([]const u8).initCapacity(allocator, 16);
     errdefer selectors.deinit();
 
@@ -119,10 +117,10 @@ fn parse_rule(
 
     var it = std.mem.tokenizeScalar(u8, selector_str, ',');
     while (it.next()) |item| {
-        try selectors.append(std.mem.trim(u8, item, &std.ascii.whitespace));
+        try selectors.append(trim(item));
     }
 
-    if (selectors.items.len == 0) return error.NoSelector;
+    if (selectors.items.len == 0) return error.EmptySelectorsList;
 
     // parse opening curly brace '{'
     try read_char('{');
@@ -198,7 +196,7 @@ fn parse_string_up_to(char: u8) ![]const u8 {
         return error.ParseError;
     }
 
-    return std.mem.trim(u8, if_buffer[initial_index..index], &std.ascii.whitespace);
+    return trim(if_buffer[initial_index..index]);
 }
 
 fn read_char(char: u8) !void {
@@ -237,4 +235,8 @@ fn debug_at(_: u64) void {
     // for (0..i - 1) |_| std.debug.print(" ", .{}) else std.debug.print("^ near here\n\n", .{});
 
     // std.debug.print("current_char: {c}\n", .{if_buffer[current_index]});
+}
+
+inline fn trim(str: []const u8) []const u8 {
+    return std.mem.trim(u8, str, &std.ascii.whitespace);
 }
