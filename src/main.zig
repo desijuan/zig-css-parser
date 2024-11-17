@@ -1,6 +1,6 @@
 const std = @import("std");
 const utils = @import("utils.zig");
-const css = @import("css.zig");
+const parser = @import("parser.zig");
 
 const FileBufferedReader = std.io.BufferedReader(4096, std.fs.File.Reader);
 
@@ -23,7 +23,8 @@ pub fn main() !u8 {
     defer _ = gpa.deinit();
 
     const allocator = gpa.allocator();
-    css.allocator = allocator;
+
+    parser.allocator = allocator;
 
     const input_file: std.fs.File = try std.fs.cwd().openFile(input_fp, .{ .mode = .read_only });
     defer input_file.close();
@@ -33,14 +34,15 @@ pub fn main() !u8 {
     var input_file_br: FileBufferedReader = std.io.bufferedReader(input_file.reader());
     const reader: FileBufferedReader.Reader = input_file_br.reader();
 
-    const if_buffer = try allocator.alloc(u8, file_size);
+    const if_buffer: []u8 = try allocator.alloc(u8, file_size);
     defer allocator.free(if_buffer);
-    css.if_buffer = if_buffer;
 
-    const nread = try reader.readAll(css.if_buffer);
-    if (nread != css.if_buffer.len) return error.BufferTooSmall;
+    const nread = try reader.readAll(if_buffer);
+    if (nread != if_buffer.len) return error.BufferTooSmall;
 
-    const cssSheet = css.parse_sheet() catch |err| {
+    parser.buffer = if_buffer;
+
+    const cssSheet = parser.parse_sheet() catch |err| {
         switch (err) {
             error.UnknownProperty => {},
             else => std.debug.print("error: {s}\n", .{@errorName(err)}),

@@ -3,7 +3,7 @@ const std = @import("std");
 var index: u64 = 0;
 
 pub var allocator: std.mem.Allocator = undefined;
-pub var if_buffer: []u8 = undefined;
+pub var buffer: []const u8 = undefined;
 
 pub const Sheet = struct {
     rules: []const Rule,
@@ -92,16 +92,13 @@ pub fn parse_sheet() !Sheet {
         rules.deinit();
     }
 
-    try eat_whitespace();
-    while (index < if_buffer.len) : (try eat_whitespace()) {
+    eat_whitespace();
+    while (index < buffer.len) : (eat_whitespace()) {
         const rule = try parse_rule();
         try rules.append(rule);
     }
 
-    if (index != if_buffer.len) {
-        debug_at(index);
-        return error.IndexError;
-    }
+    if (index != buffer.len) return error.NotAtEOF;
 
     return Sheet{
         .rules = try rules.toOwnedSlice(),
@@ -130,8 +127,8 @@ fn parse_rule() !Rule {
     errdefer decls.deinit();
 
     // parse properties
-    try eat_whitespace();
-    while (index < if_buffer.len and if_buffer[index] != '}') : (try eat_whitespace()) {
+    eat_whitespace();
+    while (index < buffer.len and buffer[index] != '}') : (eat_whitespace()) {
         const decl = try parse_decl();
         try decls.append(decl);
     }
@@ -179,45 +176,36 @@ fn match_decl(key: []const u8, value: []const u8) ?Declaration {
 }
 
 fn parse_string_up_to(char: u8) ![]const u8 {
-    if (index >= if_buffer.len) {
-        debug_at(index);
+    if (index >= buffer.len)
         return error.IndexOutOfBounds;
-    }
 
     const initial_index: u64 = index;
 
-    while (index < if_buffer.len and if_buffer[index] != char) {
+    while (index < buffer.len and buffer[index] != char) {
         index += 1;
     }
 
-    if (index == initial_index) {
-        debug_at(index);
-        return error.DidNotMove;
-    }
+    if (index == initial_index) return error.DidNotMove;
 
-    return if_buffer[initial_index..index];
+    return buffer[initial_index..index];
 }
 
 fn read_char(char: u8) !void {
-    if (index >= if_buffer.len) {
-        debug_at(index);
+    if (index >= buffer.len)
         return error.IndexOutOfBounds;
-    }
 
-    if (if_buffer[index] != char) {
+    if (buffer[index] != char) {
         std.debug.print("error: Invalid Character", .{});
-        std.debug.print("expecting: '{c}', got: '{c}'\n", .{ char, if_buffer[index] });
-        debug_at(index);
-        return error.InvalidChar;
+        std.debug.print("expecting: '{c}', got: '{c}'\n", .{ char, buffer[index] });
+        return error.InvalidCharacter;
     }
 
     index += 1;
 }
 
-fn eat_whitespace() !void {
-    while (index < if_buffer.len and std.ascii.isWhitespace(if_buffer[index])) {
+fn eat_whitespace() void {
+    while (index < buffer.len and std.ascii.isWhitespace(buffer[index]))
         index += 1;
-    }
 }
 
 fn debug_at(_: u64) void {
@@ -238,4 +226,67 @@ fn debug_at(_: u64) void {
 
 inline fn trim(str: []const u8) []const u8 {
     return std.mem.trim(u8, str, &std.ascii.whitespace);
+}
+
+const testing = std.testing;
+
+test parse_string_up_to {
+    buffer = "123456789;123456789;";
+
+    index = buffer.len + 1;
+    try testing.expectError(error.IndexOutOfBounds, parse_string_up_to(';'));
+    try testing.expectEqual(buffer.len + 1, index);
+
+    index = 0;
+    try testing.expectEqualSlices(u8, "123456789", try parse_string_up_to(';'));
+    try testing.expectEqual(9, index);
+    try testing.expectError(error.DidNotMove, parse_string_up_to(';'));
+    try testing.expectEqual(9, index);
+}
+
+test read_char {
+    buffer = "a";
+
+    index = 1;
+    try testing.expectError(error.IndexOutOfBounds, read_char('a'));
+    try testing.expectEqual(1, index);
+
+    index = 0;
+    try read_char('a');
+    try testing.expectEqual(1, index);
+
+    index = 0;
+    try testing.expectError(error.InvalidCharacter, read_char('b'));
+    try testing.expectEqual(0, index);
+}
+
+test eat_whitespace {
+    buffer = "a   bc";
+
+    index = 0;
+    eat_whitespace();
+    try testing.expectEqual(0, index);
+
+    index = 1;
+    eat_whitespace();
+    try testing.expectEqual(4, index);
+
+    index = buffer.len;
+    eat_whitespace();
+    try testing.expectEqual(buffer.len, index);
+
+    index = buffer.len + 1;
+    eat_whitespace();
+    try testing.expectEqual(buffer.len + 1, index);
+}
+
+test match_decl {
+    try testing.expectEqual(null, match_decl("unexistent-property", ""));
+    try testing.expectEqual(Declaration{ .property = .color, .value = "blue" }, match_decl("color", "blue"));
+}
+
+test trim {
+    try testing.expectEqualSlices(u8, "abcde", trim("  abcde"));
+    try testing.expectEqualSlices(u8, "abcde", trim("abcde  "));
+    try testing.expectEqualSlices(u8, "abcde", trim(" abcde  "));
 }
