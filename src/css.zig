@@ -112,17 +112,18 @@ fn parse_rule() !Rule {
     var selectors = try std.ArrayList([]const u8).initCapacity(allocator, 16);
     errdefer selectors.deinit();
 
-    // parse selector part
-    const selector_str = try parse_string_up_to('{');
+    // read selector part
+    const selectors_str = try parse_string_up_to('{');
 
-    var it = std.mem.tokenizeScalar(u8, selector_str, ',');
-    while (it.next()) |item| {
+    // parse selectors list
+    var selectors_it = std.mem.tokenizeScalar(u8, selectors_str, ',');
+    while (selectors_it.next()) |item| {
         try selectors.append(trim(item));
     }
 
     if (selectors.items.len == 0) return error.EmptySelectorsList;
 
-    // parse opening curly brace '{'
+    // read opening curly brace '{'
     try read_char('{');
 
     var decls = try std.ArrayList(Declaration).initCapacity(allocator, 256);
@@ -135,7 +136,7 @@ fn parse_rule() !Rule {
         try decls.append(decl);
     }
 
-    // parse closing curly brace '}'
+    // read closing curly brace '}'
     try read_char('}');
 
     return Rule{
@@ -145,24 +146,22 @@ fn parse_rule() !Rule {
 }
 
 fn parse_decl() !Declaration {
-    // parse key
-    const key = try parse_string_up_to(':');
+    // read declaration part
+    const decl_str = try parse_string_up_to(';');
 
-    // read colon ':'
-    try read_char(':');
+    // parse key-value pair
+    var decl_it = std.mem.tokenizeScalar(u8, decl_str, ':');
+    const key: []const u8 = trim(decl_it.next() orelse return error.EmptyStatement);
+    const value: []const u8 = trim(decl_it.next() orelse return error.NoValue);
 
-    try eat_whitespace();
-
-    // parse value
-    const value = try parse_string_up_to(';');
-
-    // read semicolon ';'
-    try read_char(';');
-
+    // match property
     const decl = match_decl(key, value) orelse {
         std.debug.print("Unknown Property: \"{s}\"\n", .{key});
         return error.UnknownProperty;
     };
+
+    // read closing semi-colon ';'
+    try read_char(';');
 
     return decl;
 }
@@ -193,10 +192,10 @@ fn parse_string_up_to(char: u8) ![]const u8 {
 
     if (index == initial_index) {
         debug_at(index);
-        return error.ParseError;
+        return error.DidNotMove;
     }
 
-    return trim(if_buffer[initial_index..index]);
+    return if_buffer[initial_index..index];
 }
 
 fn read_char(char: u8) !void {
